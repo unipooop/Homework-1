@@ -64,7 +64,7 @@ contract NFinTech is IERC721 {
     }
 
     function balanceOf(address owner) public view returns (uint256) {
-        if (owner == address(0)) revert ZeroAddress();
+        //if (owner == address(0)) revert ZeroAddress();
         return _balances[owner];
     }
 
@@ -76,29 +76,90 @@ contract NFinTech is IERC721 {
 
     function setApprovalForAll(address operator, bool approved) external {
         // TODO: please add your implementaiton here
+        require(msg.sender != operator, "ERROR: owner == operator");
+        require(operator != address(0));
+        _operatorApproval[msg.sender][operator] = approved;
+        emit ApprovalForAll(msg.sender, operator, approved);
     }
 
     function isApprovedForAll(address owner, address operator) public view returns (bool) {
         // TODO: please add your implementaiton here
+        return ( operator == owner||_operatorApproval[owner][operator]);
     }
 
     function approve(address to, uint256 tokenId) external {
         // TODO: please add your implementaiton here
+        address owner = _owner[tokenId];
+        require(owner != to, "ERROR: owner == to");
+        require(owner == msg.sender || isApprovedForAll(owner, msg.sender), "ERROR: Caller is not token owner / approved for all");
+        _tokenApproval[tokenId] = to;
+        emit Approval(owner, to, tokenId);
+
     }
 
     function getApproved(uint256 tokenId) public view returns (address operator) {
         // TODO: please add your implementaiton here
+        address owner = _owner[tokenId];
+        require(owner != address(0), "ERROR: Token is not minted or is burn");
+        return _tokenApproval[tokenId];
     }
 
     function transferFrom(address from, address to, uint256 tokenId) public {
         // TODO: please add your implementaiton here
+        
+        address owner = _owner[tokenId];
+        require(to != address(0), "transfer to zero address");
+        require(owner == from, "ERROR: Owner is not the from address");
+        require(msg.sender == owner || isApprovedForAll(owner, msg.sender) || getApproved(tokenId) == msg.sender, "ERROR: Caller doesn't have permission to transfer");
+        delete _tokenApproval[tokenId];
+        _balances[from] -= 1;
+        _balances[to] += 1;
+        _owner[tokenId] = to;
+        delete _tokenApproval[tokenId];
+        emit Transfer(from, to, tokenId);
+
+
+
     }
 
     function safeTransferFrom(address from, address to, uint256 tokenId, bytes calldata data) public {
         // TODO: please add your implementaiton here
+          _safeTransfer(from, to, tokenId, data);
     }
 
     function safeTransferFrom(address from, address to, uint256 tokenId) public {
+
         // TODO: please add your implementaiton here
+          _safeTransfer(from, to, tokenId, "");
+    }
+    function _safeTransfer(address from, address to, uint256 tokenId, bytes memory data) internal {
+        address owner = _owner[tokenId];
+        require(owner == from, "ERROR: Owner is not the from address");
+        require(msg.sender == owner || isApprovedForAll(owner, msg.sender) || getApproved(tokenId) == msg.sender, "ERROR: Caller doesn't have permission to transfer");
+        delete _tokenApproval[tokenId];
+        _balances[from] -= 1;
+        _balances[to] += 1;
+        _owner[tokenId] = to;
+        emit Transfer(from, to, tokenId);
+        require(_checkOnERC721Received(from, to, tokenId, data), "ERROR: ERC721Receiver is not implmeneted");
+    }
+    
+    function _checkOnERC721Received(address from, address to, uint256 tokenId, bytes memory data) private returns (bool) {
+        if (to.code.length > 0 /* to is a contract*/) {
+            try IERC721TokenReceiver(to).onERC721Received(msg.sender, from, tokenId, data) returns (bytes4 retval) {
+                return retval == IERC721TokenReceiver.onERC721Received.selector;
+            } catch (bytes memory reason) {
+                if (reason.length == 0) {
+                    revert("ERC721: transfer to non ERC721Receiver implementer");
+                } else {
+                    /// @solidity memory-safe-assembly
+                    assembly {
+                        revert(add(32, reason), mload(reason))
+                    }
+                }
+            }
+        } else {
+            return true;
+        }
     }
 }
